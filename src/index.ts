@@ -2,16 +2,39 @@ import cp = require('child_process')
 import fs = require('fs')
 import p = require('path')
 
-// Logger
-const l = (msg: string): void => console.log(`husky - ${msg}`)
+interface Options {
+  log: (msg: string) => void
+  error: (msg: string) => void
+}
+
+type CustomOptions = Partial<Options>
+
+interface Husky {
+  install: (dir: string) => void
+  set: (file: string, cmd: string) => void
+  add: (file: string, cmd: string) => void
+  uninstall: () => void
+}
+
+// Default options
+const defaultOptions: Options = {
+  log: (msg: string): void => console.log(`husky - ${msg}`),
+  error: (msg: string): void => console.error(`husky - ${msg}`),
+}
 
 // Git command
 const git = (args: string[]): cp.SpawnSyncReturns<Buffer> =>
   cp.spawnSync('git', args, { stdio: 'inherit' })
 
-export function install(dir = '.husky'): void {
+const defaultHusky = configure()
+
+export function configure(customOptions: CustomOptions = {}): Husky {
+  const options: Options = { ...defaultOptions, ...customOptions }
+  return {
+
+install(dir = '.husky'): void {
   if (process.env.HUSKY === '0') {
-    l('HUSKY env variable is set to 0, skipping install')
+    options.log('HUSKY env variable is set to 0, skipping install')
     return
   }
 
@@ -51,14 +74,14 @@ export function install(dir = '.husky'): void {
       throw error
     }
   } catch (e) {
-    l('Git hooks failed to install')
+    options.error('Git hooks failed to install')
     throw e
   }
 
-  l('Git hooks installed')
-}
+  options.log('Git hooks installed')
+},
 
-export function set(file: string, cmd: string): void {
+set(file: string, cmd: string): void {
   const dir = p.dirname(file)
   if (!fs.existsSync(dir)) {
     throw new Error(
@@ -76,18 +99,25 @@ ${cmd}
     { mode: 0o0755 },
   )
 
-  l(`created ${file}`)
-}
+  options.log(`created ${file}`)
+},
 
-export function add(file: string, cmd: string): void {
+add(file: string, cmd: string): void {
   if (fs.existsSync(file)) {
     fs.appendFileSync(file, `${cmd}\n`)
-    l(`updated ${file}`)
+    options.log(`updated ${file}`)
   } else {
-    set(file, cmd)
+    this.set(file, cmd)
+  }
+},
+
+uninstall(): void {
+  git(['config', '--unset', 'core.hooksPath'])
+},
+
   }
 }
-
-export function uninstall(): void {
-  git(['config', '--unset', 'core.hooksPath'])
-}
+export const install = defaultHusky.install.bind(defaultHusky)
+export const set = defaultHusky.set.bind(defaultHusky)
+export const add = defaultHusky.add.bind(defaultHusky)
+export const uninstall = defaultHusky.uninstall.bind(defaultHusky)
